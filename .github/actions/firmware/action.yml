@@ -1,0 +1,53 @@
+name: Build Toffee firmware
+description: >-
+  Build the ESP32-C5 firmware into firmware-out, or restore it from the cache when nothing that can
+  change it has changed.
+
+runs:
+  using: composite
+  steps:
+    - name: Work out the cache key
+      id: key
+      shell: bash
+      run: |
+        image=$(jq -er .espIdf.image toolchain.json)
+        idf_commit=$(git rev-parse HEAD:third_party/esp-idf)
+        hash=$( (echo "$image"; cat $(git ls-files firmware src/common 'patches/esp-idf-*.patch' tools/build-firmware.sh cmake/ApplyPatch.cmake .github/actions/firmware)) | sha256sum | cut -c1-16)
+        echo "key=firmware-$idf_commit-$hash" >> "$GITHUB_OUTPUT"
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+
+    - name: Look for a cached build
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: firmware-out
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build the firmware
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        IDF_IMAGE: ${{ steps.key.outputs.image }}
+      run: |
+        docker run --rm --entrypoint bash -v "$PWD:/work" -w /work "$IDF_IMAGE" \
+          -c 'git config --global --add safe.directory "*" && ./tools/build-firmware.sh'
+        # Released firmware must not carry the profiling or memory diagnostics options
+        # (firmware/sdkconfig.defaults); they are for local builds only.
+        if ! jq -e '.COMPILER_OPTIMIZATION_PERF == true and (.TOFFEE_PROFILE // false) == false
+                    and (.TOFFEE_MEMORY_DIAGNOSTICS // false) == false' \
+             build/firmware/config/sdkconfig.json > /dev/null; then
+          echo "::error::firmware/sdkconfig.defaults is not a release configuration (-O2, no profiling, no memory diagnostics)."
+          exit 1
+        fi
+        # Keep only what packaging needs, laid out as in the ESP-IDF build folder.
+        mkdir -p firmware-out/bootloader firmware-out/partition_table
+        cp build/firmware/flasher_args.json build/firmware/firmware.bin firmware-out/
+        cp build/firmware/bootloader/bootloader.bin firmware-out/bootloader/
+        cp build/firmware/partition_table/partition-table.bin firmware-out/partition_table/
+
+    - name: Save the firmware build
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: firmware-out
+        key: ${{ steps.key.outputs.key }}

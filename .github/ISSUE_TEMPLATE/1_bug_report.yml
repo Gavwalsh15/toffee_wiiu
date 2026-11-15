@@ -1,0 +1,28 @@
+name: Bug report
+description: Report an error or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the setup guide and existing issues before reporting a bug.
+        Include the Toffee version and the newest session log from `%LOCALAPPDATA%\Toffee\Toffee\logs` when available.
+
+  - type: textarea
+    attributes:
+      label: Summary
+      description: |
+        A clear and concise description of the bug, including a minimal reproducible example.
+        If we cannot reproduce the bug, it is unlikely that we will be able to help you.
+
+        Describe the steps, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Hardware and software
+      description: Include the Toffee version, Windows version, ESP32-C5 board, Wii U GamePad model, and what you were streaming (display, window, or test scene).
+      placeholder: Toffee version, Windows 11, board name, GamePad, display or window capture
+    validations:
+      required: true

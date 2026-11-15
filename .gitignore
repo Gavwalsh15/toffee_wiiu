@@ -1,0 +1,15 @@
+/build/
+/dist/
+/.tools/
+/.idea/
+/CMakeUserPresets.json
+/cmake/LocalConfig.cmake
+/cmake-build-*/
+/firmware/build/
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+/firmware/managed_components/
+/logs/
+/aqtinstall.log
+__pycache__/
+*.py[cod]

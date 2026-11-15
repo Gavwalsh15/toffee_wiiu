@@ -1,0 +1,94 @@
+diff --git a/components/esp_driver_usb_serial_jtag/src/usb_serial_jtag.c b/components/esp_driver_usb_serial_jtag/src/usb_serial_jtag.c
+index e6abe60e..c52d8690 100644
+--- a/components/esp_driver_usb_serial_jtag/src/usb_serial_jtag.c
++++ b/components/esp_driver_usb_serial_jtag/src/usb_serial_jtag.c
+@@ -7,6 +7,7 @@
+ #include <string.h>
+ #include <stdbool.h>
+ #include <stdatomic.h>
++#include <stdlib.h>
+ #include "esp_log.h"
+ #include "hal/usb_serial_jtag_ll.h"
+ #include "freertos/FreeRTOS.h"
+@@ -41,6 +42,8 @@ typedef struct {
+ 
+     // RX parameters
+     RingbufHandle_t rx_ring_buf;        /*!< RX ring buffer handler */
++    atomic_uint rx_space;
++    atomic_uint rx_pauses;
+ 
+     // TX parameters
+     RingbufHandle_t tx_ring_buf;        /*!< TX ring buffer handler */
+@@ -55,6 +58,7 @@ typedef struct {
+ } usb_serial_jtag_obj_t;
+ 
+ static usb_serial_jtag_obj_t *p_usb_serial_jtag_obj = NULL;
++static portMUX_TYPE usb_rx_mux = portMUX_INITIALIZER_UNLOCKED;
+ 
+ static const char* USB_SERIAL_JTAG_TAG = "usb_serial_jtag";
+ 
+@@ -142,15 +146,22 @@ static void usb_serial_jtag_isr_handler_default(void *arg)
+     }
+ 
+     if (usbjtag_intr_status & USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT) {
+-        // Acknowledge interrupt
+-        usb_serial_jtag_ll_clr_intsts_mask(USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT);
+-        // Read RX FIFO and send available data to ringbuffer.
+-        uint8_t buf[USB_SER_JTAG_RX_MAX_SIZE];
+-        uint32_t rx_fifo_len = usb_serial_jtag_ll_read_rxfifo(buf, USB_SER_JTAG_RX_MAX_SIZE);
+-        xRingbufferSendFromISR(p_usb_serial_jtag_obj->rx_ring_buf, buf, rx_fifo_len, &xTaskWoken);
+-
+-        if (p_usb_serial_jtag_obj->usj_select_notif_callback) {
+-            p_usb_serial_jtag_obj->usj_select_notif_callback(USJ_SELECT_READ_NOTIF, &xTaskWoken);
++        // Leave the packet in the hardware FIFO while the software ring is
++        // full. USB then applies endpoint backpressure instead of losing bytes.
++        if (atomic_load_explicit(&p_usb_serial_jtag_obj->rx_space, memory_order_acquire) < USB_SER_JTAG_RX_MAX_SIZE) {
++            usb_serial_jtag_ll_disable_intr_mask(USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT);
++            atomic_fetch_add_explicit(&p_usb_serial_jtag_obj->rx_pauses, 1, memory_order_relaxed);
++        } else {
++            usb_serial_jtag_ll_clr_intsts_mask(USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT);
++            uint8_t buf[USB_SER_JTAG_RX_MAX_SIZE];
++            uint32_t rx_fifo_len = usb_serial_jtag_ll_read_rxfifo(buf, USB_SER_JTAG_RX_MAX_SIZE);
++            atomic_fetch_sub_explicit(&p_usb_serial_jtag_obj->rx_space, rx_fifo_len, memory_order_acq_rel);
++            BaseType_t stored = xRingbufferSendFromISR(p_usb_serial_jtag_obj->rx_ring_buf, buf, rx_fifo_len, &xTaskWoken);
++            // There is one producer; the reader can only increase free space.
++            if (stored != pdTRUE) abort();
++            if (p_usb_serial_jtag_obj->usj_select_notif_callback) {
++                p_usb_serial_jtag_obj->usj_select_notif_callback(USJ_SELECT_READ_NOTIF, &xTaskWoken);
++            }
+         }
+     }
+ 
+@@ -182,6 +193,9 @@ esp_err_t usb_serial_jtag_driver_install(usb_serial_jtag_driver_config_t *usb_se
+         goto _exit;
+     }
+ 
++    atomic_init(&p_usb_serial_jtag_obj->rx_space, (unsigned)xRingbufferGetCurFreeSize(p_usb_serial_jtag_obj->rx_ring_buf));
++    atomic_init(&p_usb_serial_jtag_obj->rx_pauses, 0);
++
+     p_usb_serial_jtag_obj->tx_ring_buf = xRingbufferCreate(usb_serial_jtag_config->tx_buffer_size, RINGBUF_TYPE_BYTEBUF);
+     if (p_usb_serial_jtag_obj->tx_ring_buf == NULL) {
+         ESP_LOGE(USB_SERIAL_JTAG_TAG, "ringbuffer create error");
+@@ -257,6 +271,12 @@ int usb_serial_jtag_read_bytes(void* buf, uint32_t length, TickType_t ticks_to_w
+ 
+     memcpy((uint8_t*)buf, data, data_read_len);
+     vRingbufferReturnItem(p_usb_serial_jtag_obj->rx_ring_buf, data);
++    atomic_fetch_add_explicit(&p_usb_serial_jtag_obj->rx_space, data_read_len, memory_order_release);
++    // A pending RX interrupt was left uncleared when the FIFO was paused.
++    // Re-enable it after returning space, protecting this register RMW from TX ISR.
++    portENTER_CRITICAL(&usb_rx_mux);
++    usb_serial_jtag_ll_ena_intr_mask(USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT);
++    portEXIT_CRITICAL(&usb_rx_mux);
+     data = NULL;
+ 
+     return data_read_len;
+@@ -390,3 +410,9 @@ bool usb_serial_jtag_write_ready(void)
+     // sign that the driver is write ready is that the TX ring buffer is not full
+     return (xRingbufferGetCurFreeSize(p_usb_serial_jtag_obj->tx_ring_buf) > 0);
+ }
++
++// Project telemetry; not part of Espressif's public API.
++uint32_t usb_rx_pause_count(void)
++{
++    return p_usb_serial_jtag_obj ? atomic_load_explicit(&p_usb_serial_jtag_obj->rx_pauses, memory_order_relaxed) : 0;
++}

@@ -1,0 +1,18 @@
+[submodule "third_party/drc-x264"]
+	path = third_party/drc-x264
+	url = https://github.com/opencma/drc-x264.git
+	# The build applies patches/drc-x264-gamepad.patch in place.
+	ignore = dirty
+	shallow = true
+[submodule "third_party/esp-idf"]
+	path = third_party/esp-idf
+	url = https://github.com/espressif/esp-idf.git
+	# Pinned to v5.5.5. firmware/CMakeLists.txt applies patches/esp-idf-*.patch in place.
+	ignore = dirty
+	shallow = true
+[submodule "third_party/ViGEmClient"]
+	path = third_party/ViGEmClient
+	url = https://github.com/nefarius/ViGEmClient.git
+	# Pinned: the client library for the ViGEmBus virtual controller driver.
+	ignore = dirty
+	shallow = true
