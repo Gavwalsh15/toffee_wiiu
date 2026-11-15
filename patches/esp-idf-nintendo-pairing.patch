@@ -1,0 +1,266 @@
+diff --git a/components/wpa_supplicant/esp_supplicant/src/esp_hostap.c b/components/wpa_supplicant/esp_supplicant/src/esp_hostap.c
+index ee175c37..1bb07636 100644
+--- a/components/wpa_supplicant/esp_supplicant/src/esp_hostap.c
++++ b/components/wpa_supplicant/esp_supplicant/src/esp_hostap.c
+@@ -309,6 +309,12 @@ bool hostap_deinit(void *data)
+     if (hapd == NULL) {
+         return true;
+     }
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: retain hostap state across open pairing-profile switch. */
++    if (esp_wifi_ap_get_prof_authmode_internal() == WIFI_AUTH_OPEN) {
++        return true;
++    }
++#endif
+     esp_wifi_unset_appie_internal(WIFI_APPIE_WPA);
+     esp_wifi_unset_appie_internal(WIFI_APPIE_ASSOC_RESP);
+ 
+diff --git a/components/wpa_supplicant/esp_supplicant/src/esp_hostpad_wps.c b/components/wpa_supplicant/esp_supplicant/src/esp_hostpad_wps.c
+index 7f0e74f9..bcd8cd4f 100644
+--- a/components/wpa_supplicant/esp_supplicant/src/esp_hostpad_wps.c
++++ b/components/wpa_supplicant/esp_supplicant/src/esp_hostpad_wps.c
+@@ -68,6 +68,10 @@ static int wifi_ap_wps_init(const esp_wps_config_t *config)
+     if (wps_dev_init() != 0) {
+         goto _err;
+     }
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: publish PIN-capable methods in the AP WPS IE. */
++    sm->wps_ctx->config_methods = sm->wps_ctx->dev.config_methods;
++#endif
+ 
+     cfg.registrar = 1;
+     cfg.wps = sm->wps_ctx;
+@@ -162,10 +166,14 @@ static int wifi_ap_wps_enable_internal(const esp_wps_config_t *config)
+         return ESP_ERR_WIFI_MODE;
+     }
+ 
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: allow open Nintendo 802.1X pairing APs. */
++#else
+     if (esp_wifi_ap_get_prof_authmode_internal() == WIFI_AUTH_OPEN) {
+         wpa_printf(MSG_ERROR, "wps enable: wpsreg not supported when authmode is open");
+         return ESP_ERR_WIFI_MODE;
+     }
++#endif
+ 
+     owner = wps_get_owner();
+     if (owner != WPS_OWNER_NONE) {
+diff --git a/components/wpa_supplicant/esp_supplicant/src/esp_wps.c b/components/wpa_supplicant/esp_supplicant/src/esp_wps.c
+index 34a40617..f363acdb 100644
+--- a/components/wpa_supplicant/esp_supplicant/src/esp_wps.c
++++ b/components/wpa_supplicant/esp_supplicant/src/esp_wps.c
+@@ -1070,6 +1070,14 @@ int wps_dev_init(void)
+         ret = ESP_FAIL;
+         goto _out;
+     }
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: advertise the Wii U pairing device type and 5 GHz band. */
++    dev->config_methods = WPS_CONFIG_LABEL | WPS_CONFIG_PUSHBUTTON;
++    dev->rf_bands = WPS_RF_50GHZ;
++    WPA_PUT_BE16(dev->pri_dev_type, 6);
++    WPA_PUT_BE32(dev->pri_dev_type + 2, 0xa4c0e1f4);
++    WPA_PUT_BE16(dev->pri_dev_type + 6, 1);
++#else
+     dev->config_methods = WPS_CONFIG_VIRT_PUSHBUTTON;
+ #ifdef CONFIG_ESP_WIFI_WPS_PASSPHRASE
+     dev->config_methods |= WPS_CONFIG_DISPLAY | WPS_CONFIG_VIRT_DISPLAY;
+@@ -1079,6 +1087,7 @@ int wps_dev_init(void)
+     WPA_PUT_BE16(dev->pri_dev_type, WPS_DEV_PHONE);
+     WPA_PUT_BE32(dev->pri_dev_type + 2, WPS_DEV_OUI_WFA);
+     WPA_PUT_BE16(dev->pri_dev_type + 6, WPS_DEV_PHONE_SINGLE_MODE);
++#endif
+ 
+     if (!s_factory_info) {
+         ret = wps_set_default_factory();
+diff --git a/components/wpa_supplicant/src/ap/wps_hostapd.c b/components/wpa_supplicant/src/ap/wps_hostapd.c
+index a2b7ecc6..91630f22 100644
+--- a/components/wpa_supplicant/src/ap/wps_hostapd.c
++++ b/components/wpa_supplicant/src/ap/wps_hostapd.c
+@@ -255,7 +255,12 @@ static void hostapd_wps_event_cb(void *ctx, enum wps_event event,
+ 
+ static int hostapd_wps_rf_band_cb(void *ctx)
+ {
++#ifdef TOFFEE_NINTENDO_PAIRING
++	/* Toffee: pairing beacons must report the 5 GHz radio band. */
++	return WPS_RF_50GHZ;
++#else
+ 	return WPS_RF_24GHZ;
++#endif
+ }
+ 
+ 
+@@ -375,7 +380,12 @@ int hostapd_wps_add_pin(struct hostapd_data *hapd, const u8 *pin)
+ 	if (hapd->wps == NULL)
+ 		return 0;
+ 	ret = wps_registrar_add_pin(hapd->wps->registrar, NULL,
++#ifdef TOFFEE_NINTENDO_PAIRING
++				    /* Toffee: keep the test PIN active until the next reboot. */
++				    NULL, pin, 8, 0);
++#else
+ 				    NULL, pin, 8, 120);
++#endif
+ 	return ret;
+ }
+ 
+diff --git a/components/wpa_supplicant/src/common/wpa_common.c b/components/wpa_supplicant/src/common/wpa_common.c
+index 6f948576..34708b22 100644
+--- a/components/wpa_supplicant/src/common/wpa_common.c
++++ b/components/wpa_supplicant/src/common/wpa_common.c
+@@ -1257,6 +1257,13 @@ int wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
+ 	} else {
+ 		sha1_prf(pmk, pmk_len, label, data, data_len, tmp, ptk_len);
+ 	}
++#ifdef TOFFEE_NINTENDO_PAIRING
++	/* Toffee: rotate Nintendo's operational PTK by three bytes. */
++	u8 first_three[3];
++	os_memcpy(first_three, tmp, sizeof(first_three));
++	os_memmove(tmp, tmp + sizeof(first_three), ptk_len - sizeof(first_three));
++	os_memcpy(tmp + ptk_len - sizeof(first_three), first_three, sizeof(first_three));
++#endif
+ 	wpa_printf(MSG_DEBUG, "WPA: PTK derivation - A1=" MACSTR " A2=" MACSTR"\n",
+ 		   MAC2STR(addr1), MAC2STR(addr2));
+ 
+diff --git a/components/wpa_supplicant/src/common/wpa_common.h b/components/wpa_supplicant/src/common/wpa_common.h
+index d4d164db..d8a6fdd5 100644
+--- a/components/wpa_supplicant/src/common/wpa_common.h
++++ b/components/wpa_supplicant/src/common/wpa_common.h
+@@ -54,7 +54,12 @@
+ #define WAPI_CIPHER_SUITE_SMS4 WAPI_SELECTOR(0x00, 0x14, 0x72, 1)
+ 
+ #define RSN_AUTH_KEY_MGMT_UNSPEC_802_1X RSN_SELECTOR(0x00, 0x0f, 0xac, 1)
++#ifdef TOFFEE_NINTENDO_PAIRING
++/* Toffee: Nintendo operational RSN suite selectors. */
++#define RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X RSN_SELECTOR(0xa4, 0xc0, 0xe1, 2)
++#else
+ #define RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X RSN_SELECTOR(0x00, 0x0f, 0xac, 2)
++#endif
+ #ifdef CONFIG_IEEE80211R
+ #define RSN_AUTH_KEY_MGMT_FT_802_1X RSN_SELECTOR(0x00, 0x0f, 0xac, 3)
+ #define RSN_AUTH_KEY_MGMT_FT_PSK RSN_SELECTOR(0x00, 0x0f, 0xac, 4)
+@@ -75,7 +80,12 @@ RSN_SELECTOR(0x00, 0x0f, 0xac, 13)
+ #define RSN_CIPHER_SUITE_NONE RSN_SELECTOR(0x00, 0x0f, 0xac, 0)
+ #define RSN_CIPHER_SUITE_WEP40 RSN_SELECTOR(0x00, 0x0f, 0xac, 1)
+ #define RSN_CIPHER_SUITE_TKIP RSN_SELECTOR(0x00, 0x0f, 0xac, 2)
++#ifdef TOFFEE_NINTENDO_PAIRING
++/* Toffee: Nintendo operational RSN suite selectors. */
++#define RSN_CIPHER_SUITE_CCMP RSN_SELECTOR(0xa4, 0xc0, 0xe1, 4)
++#else
+ #define RSN_CIPHER_SUITE_CCMP RSN_SELECTOR(0x00, 0x0f, 0xac, 4)
++#endif
+ #define RSN_CIPHER_SUITE_WEP104 RSN_SELECTOR(0x00, 0x0f, 0xac, 5)
+ #ifdef CONFIG_IEEE80211W
+ #define RSN_CIPHER_SUITE_AES_128_CMAC RSN_SELECTOR(0x00, 0x0f, 0xac, 6)
+diff --git a/components/wpa_supplicant/src/wps/wps.c b/components/wpa_supplicant/src/wps/wps.c
+index bb46ef39..829d3135 100644
+--- a/components/wpa_supplicant/src/wps/wps.c
++++ b/components/wpa_supplicant/src/wps/wps.c
+@@ -503,7 +503,12 @@ struct wpabuf * wps_build_assoc_req_ie(enum wps_request_type req_type)
+ 
+     wpabuf_put_u8(ie, WLAN_EID_VENDOR_SPECIFIC);
+     len = wpabuf_put(ie, 1);
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: Nintendo association WPS vendor ID. */
++    wpabuf_put_be32(ie, 0xa4c0e1f4);
++#else
+     wpabuf_put_be32(ie, WPS_DEV_OUI_WFA);
++#endif
+ 
+     if (wps_build_version(ie) ||
+         wps_build_req_type(ie, req_type) ||
+@@ -537,7 +542,12 @@ struct wpabuf * wps_build_assoc_resp_ie(void)
+ 
+     wpabuf_put_u8(ie, WLAN_EID_VENDOR_SPECIFIC);
+     len = wpabuf_put(ie, 1);
++#ifdef TOFFEE_NINTENDO_PAIRING
++    /* Toffee: Nintendo association WPS vendor ID. */
++    wpabuf_put_be32(ie, 0xa4c0e1f4);
++#else
+     wpabuf_put_be32(ie, WPS_DEV_OUI_WFA);
++#endif
+ 
+     if (wps_build_version(ie) ||
+         wps_build_resp_type(ie, WPS_RESP_AP) ||
+diff --git a/components/wpa_supplicant/src/wps/wps_attr_build.c b/components/wpa_supplicant/src/wps/wps_attr_build.c
+index c7d739a0..a0aa17ef 100644
+--- a/components/wpa_supplicant/src/wps/wps_attr_build.c
++++ b/components/wpa_supplicant/src/wps/wps_attr_build.c
+@@ -217,6 +217,11 @@ int wps_build_wfa_ext(struct wpabuf *msg, int req_to_enroll,
+ {
+ 	u8 *len;
+ 
++#ifdef TOFFEE_NINTENDO_PAIRING
++	/* The console advertises WPS 1.0 without the WFA Version2 extension. */
++	return 0;
++#endif
++
+ #ifdef CONFIG_WPS_TESTING
+ 	if (WPS_VERSION == 0x10)
+ 		return 0;
+@@ -487,7 +492,12 @@ struct wpabuf * wps_ie_encapsulate(struct wpabuf *data)
+ 			frag_len = 251;
+ 		wpabuf_put_u8(ie, WLAN_EID_VENDOR_SPECIFIC);
+ 		wpabuf_put_u8(ie, 4 + frag_len);
++#ifdef TOFFEE_NINTENDO_PAIRING
++		/* Toffee: Nintendo WPS 1.0 vendor ID. */
++		wpabuf_put_be32(ie, 0xa4c0e1f4);
++#else
+ 		wpabuf_put_be32(ie, WPS_DEV_OUI_WFA);
++#endif
+ 		wpabuf_put_data(ie, pos, frag_len);
+ 		pos += frag_len;
+ 	}
+diff --git a/components/wpa_supplicant/src/wps/wps_common.c b/components/wpa_supplicant/src/wps/wps_common.c
+index 0f6bccc7..c1c251d5 100644
+--- a/components/wpa_supplicant/src/wps/wps_common.c
++++ b/components/wpa_supplicant/src/wps/wps_common.c
+@@ -118,6 +118,14 @@ int wps_derive_keys(struct wps_data *wps)
+ 	hmac_sha256_vector(dhkey, sizeof(dhkey), 3, addr, len, kdk);
+ 	wpa_hexdump_key(MSG_DEBUG, "WPS: KDK", kdk, sizeof(kdk));
+ 
++#ifdef TOFFEE_NINTENDO_PAIRING
++	/* Toffee: Nintendo WPS rotates the 32-byte KDK before expansion. */
++	u8 toffee_prefix[3];
++	os_memcpy(toffee_prefix, kdk, sizeof(toffee_prefix));
++	os_memmove(kdk, kdk + 3, sizeof(kdk) - 3);
++	os_memcpy(kdk + sizeof(kdk) - 3, toffee_prefix, sizeof(toffee_prefix));
++#endif
++
+ 	wps_kdf(kdk, NULL, 0, "Wi-Fi Easy and Secure Key Derivation",
+ 		keys, sizeof(keys));
+ 	os_memcpy(wps->authkey, keys, WPS_AUTHKEY_LEN);
+diff --git a/components/wpa_supplicant/src/wps/wps_registrar.c b/components/wpa_supplicant/src/wps/wps_registrar.c
+index 462e16c5..bfc23700 100644
+--- a/components/wpa_supplicant/src/wps/wps_registrar.c
++++ b/components/wpa_supplicant/src/wps/wps_registrar.c
+@@ -596,6 +596,9 @@ static int wps_build_sel_reg_config_methods(struct wps_registrar *reg,
+ 	if (!reg->sel_reg_union)
+ 		return 0;
+ 	methods = reg->wps->config_methods;
++#ifdef TOFFEE_NINTENDO_PAIRING
++	/* Toffee: retain Wii U push-button advertisement during PIN pairing. */
++#else
+ 	methods &= ~WPS_CONFIG_PUSHBUTTON;
+ 	methods &= ~(WPS_CONFIG_VIRT_PUSHBUTTON |
+ 		     WPS_CONFIG_PHY_PUSHBUTTON);
+@@ -603,6 +606,7 @@ static int wps_build_sel_reg_config_methods(struct wps_registrar *reg,
+ 		wps_set_pushbutton(&methods, reg->wps->config_methods);
+ 	if (reg->sel_reg_config_methods_override >= 0)
+ 		methods = reg->sel_reg_config_methods_override;
++#endif
+ 	wpa_printf(MSG_DEBUG, "WPS:  * Selected Registrar Config Methods (%x)",
+ 		   methods);
+ 	wpabuf_put_be16(msg, ATTR_SELECTED_REGISTRAR_CONFIG_METHODS);
+@@ -620,9 +624,13 @@ static int wps_build_probe_config_methods(struct wps_registrar *reg,
+ 	 * These are the methods that the AP supports as an Enrollee for adding
+ 	 * external Registrars.
+ 	 */
++#ifdef TOFFEE_NINTENDO_PAIRING
++	methods = reg->wps->config_methods;
++#else
+ 	methods = reg->wps->config_methods & ~WPS_CONFIG_PUSHBUTTON;
+ 	methods &= ~(WPS_CONFIG_VIRT_PUSHBUTTON |
+ 		     WPS_CONFIG_PHY_PUSHBUTTON);
++#endif
+ 	wpa_printf(MSG_DEBUG, "WPS:  * Config Methods (%x)", methods);
+ 	wpabuf_put_be16(msg, ATTR_CONFIG_METHODS);
+ 	wpabuf_put_be16(msg, 2);

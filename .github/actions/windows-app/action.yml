@@ -1,0 +1,39 @@
+name: Build Toffee for Windows
+description: >-
+  Package the firmware from firmware-out with esptool and build the single-file app against
+  the prebuilt static Qt.
+
+inputs:
+  version:
+    description: Release version (vX.Y.Z or vX.Y.Z-suffix) to stamp into the executables; empty for a dev build.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install MinGW, Ninja and Python
+      uses: ./.github/actions/toolchain
+
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+      with:
+        key: windows-app
+        job-summary: ''
+
+    - name: Fetch static Qt
+      shell: pwsh
+      run: ./tools/fetch-qt-static.ps1 -Prefix D:\qt-static
+
+    - name: Package the firmware and the flasher
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force build | Out-Null
+        Copy-Item firmware-out build/firmware -Recurse -Force
+        ./tools/package-firmware.ps1 -NoBuild
+
+    - name: Build the PC app
+      shell: pwsh
+      env:
+        TOFFEE_VERSION: ${{ inputs.version }}
+      run: ./build.ps1 -QtPrefixPath D:/qt-static -Version $env:TOFFEE_VERSION -Test

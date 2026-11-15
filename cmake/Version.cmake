@@ -1,0 +1,35 @@
+set(TOFFEE_VERSION "" CACHE STRING "Release version such as 1.2.3 or 1.2.3-rc1 (default: <project version>-dev)")
+
+if(TOFFEE_VERSION)
+    string(REGEX REPLACE "^v" "" TOFFEE_VERSION_STRING "${TOFFEE_VERSION}")
+    string(REPLACE "." "\\." _version_pattern "${PROJECT_VERSION}")
+    if(NOT TOFFEE_VERSION_STRING MATCHES "^${_version_pattern}([-+][0-9A-Za-z.+-]+)?$")
+        message(FATAL_ERROR
+            "TOFFEE_VERSION ${TOFFEE_VERSION} does not match project(VERSION ${PROJECT_VERSION}) in "
+            "CMakeLists.txt. Bump the project version before tagging the release.")
+    endif()
+else()
+    set(TOFFEE_VERSION_STRING "${PROJECT_VERSION}-dev")
+endif()
+message(STATUS "Toffee version ${TOFFEE_VERSION_STRING}")
+
+set(TOFFEE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(src/app/config.h.in "${TOFFEE_GENERATED_DIR}/app/config.h" @ONLY)
+
+function(toffee_add_windows_resource target description file_name)
+    set(TOFFEE_RC_DESCRIPTION "${description}")
+    set(TOFFEE_RC_FILE_NAME "${file_name}")
+    set(TOFFEE_RC_ICON "${PROJECT_SOURCE_DIR}/assets/toffee.ico")
+    set(TOFFEE_RC_ENCODER "")
+    if(TARGET encoder)
+        set(TOFFEE_RC_ENCODER "101 RCDATA \"${TOFFEE_ENCODER_EXE}\"")
+    endif()
+    set(_rc "${CMAKE_CURRENT_BINARY_DIR}/${target}.rc")
+    configure_file("${PROJECT_SOURCE_DIR}/cmake/windows.rc.in" "${_rc}" @ONLY)
+    target_sources(${target} PRIVATE "${_rc}")
+    if(TARGET encoder)
+        # Re-embed the encoder whenever it is rebuilt.
+        set_source_files_properties("${_rc}" PROPERTIES OBJECT_DEPENDS "${TOFFEE_ENCODER_EXE}")
+    endif()
+    set_property(SOURCE "${_rc}" APPEND PROPERTY OBJECT_DEPENDS "${TOFFEE_RC_ICON}")
+endfunction()

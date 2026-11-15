@@ -1,0 +1,42 @@
+menu "Toffee"
+    config PAIRING
+        bool
+        default y
+        select ESP_WIFI_WPS_SOFTAP_REGISTRAR
+        help
+            Required SDK support for Nintendo WPS pairing and the encrypted
+            operational AP. This is always enabled in the GamePad host.
+    config CHANNEL
+        int "5 GHz AP channel (36, 40, 44, or 48)"
+        default 36
+        range 36 48
+    config ZERO_BOARD
+        bool "Waveshare C5-Zero onboard antenna switch"
+        default n
+        help
+            Selects the onboard antenna by driving GPIO26 low. Leave disabled
+            for the MINI-KIT, which has a different antenna arrangement.
+    config TOFFEE_VIDEO_HOLD_FRAMES
+        bool "Send identity P pictures during active USB gaps"
+        default n
+        help
+            Preserve a valid single-reference DRH picture while a PC record is
+            incomplete. Requires the verified QP-32 identity asset. Does not
+            count held pictures as PC frames or repair a lost reference.
+
+    config TOFFEE_MEMORY_DIAGNOSTICS
+        bool "Attribute allocation failures and sample DMA headroom"
+        default n
+        help
+            Bounded allocation-free failure mailbox, deferred logging from the
+            control task, and one-second memory snapshots. Sender timing and
+            buffer capacities remain unchanged. For diagnostic builds only.
+
+    config TOFFEE_PROFILE
+        bool "Sample streaming task CPU allocation"
+        default n
+        select FREERTOS_GENERATE_RUN_TIME_STATS
+        help
+            Diagnostic five-second task snapshots. Adds static storage and
+            scheduler accounting overhead; disable for production comparisons.
+endmenu

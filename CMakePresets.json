@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "pc-release",
+      "displayName": "PC Release",
+      "description": "Same build folder and settings as .\\build.ps1. Expects the static Qt in C:/qt-static.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/pc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "C:/qt-static"
+      }
+    },
+    {
+      "name": "pc-debug",
+      "displayName": "PC Debug",
+      "description": "Debug build with the maintenance commands and verbose logging.",
+      "inherits": "pc-release",
+      "binaryDir": "${sourceDir}/build/pc-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VERBOSE_LOGGING": "ON",
+        "TOFFEE_APP_DIAGNOSTICS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "pc-release", "configurePreset": "pc-release" },
+    { "name": "pc-debug", "configurePreset": "pc-debug" }
+  ]
+}

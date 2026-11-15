@@ -1,0 +1,79 @@
+name: Static Qt
+
+on:
+  workflow_dispatch:
+    inputs:
+      replace:
+        description: Replace the existing Qt release.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qt-static
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish static Qt
+    runs-on: windows-2022
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Read the pinned versions
+        run: |
+          $pins = Get-Content toolchain.json -Raw | ConvertFrom-Json
+          "QT_VERSION=$($pins.qt.version)" >> $env:GITHUB_ENV
+          "MINGW=$($pins.mingw.qtTool)" >> $env:GITHUB_ENV
+          "MINGW_VERSION=$($pins.mingw.version)" >> $env:GITHUB_ENV
+
+      - name: Install MinGW, Ninja and Python
+        uses: ./.github/actions/toolchain
+
+      - name: Build static Qt
+        run: |
+          $ninja = Get-ChildItem "$env:IQTA_TOOLS" -Recurse -Filter ninja.exe | Select-Object -First 1
+          $env:PATH = "$($ninja.DirectoryName);$env:PATH"
+          ./tools/build-qt-static.ps1 -MinGWBin "$env:IQTA_TOOLS/$($env:MINGW)_64/bin"
+
+      - name: Package
+        id: package
+        run: |
+          $name = "qt-static-$env:QT_VERSION-$env:MINGW.tar.xz"
+          & "$env:SystemRoot\System32\tar.exe" -cJf $name -C C:\ qt-static
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
+          $hash = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File "$name.sha256" -Encoding ascii
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "hash=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA-256: $hash"
+
+      - name: Publish
+        run: |
+          $tag = "qt-static-$env:QT_VERSION"
+          $notes = "Static Qt $env:QT_VERSION for Toffee (MinGW $env:MINGW_VERSION, release, static, Windows media backend). " +
+                   "Built by tools/build-qt-static.ps1 from the official Qt source. Qt is licensed LGPL-3.0; " +
+                   "the source is at https://download.qt.io/official_releases/qt/$($env:QT_VERSION -replace '\.\d+$', '')/$env:QT_VERSION/single/. " +
+                   "SHA-256: ${{ steps.package.outputs.hash }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+              if ('${{ inputs.replace }}' -ne 'true') {
+                  Write-Host 'The Qt release already exists; leaving it as it is.'
+                  exit 0
+              }
+              gh release delete $tag --yes --cleanup-tag
+          }
+          gh release create $tag "${{ steps.package.outputs.name }}" "${{ steps.package.outputs.name }}.sha256" `
+              --title "Static Qt $env:QT_VERSION" --notes $notes
