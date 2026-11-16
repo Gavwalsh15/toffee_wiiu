@@ -25,7 +25,7 @@ steps are skipped.
 | `-Test` | Run the host tests (`tests/`) after building |
 | `-QtPrefixPath <dir>` | Build against a Qt you already have |
 | `-RebuildFirmware` | Rebuild the firmware bundle even if one exists |
-| `-Version <v>` | Stamp a release version (`0.1.0`, `v0.1.0-rc1`); it must match `project(VERSION)` |
+| `-Version <v>` | Stamp a release version (`v0.1.0`, `v0.1.0-rc1`) |
 | `-Fresh` | Start from a clean configure |
 
 For an IDE, open the folder and pick the `pc-release` or `pc-debug` preset in `CMakePresets.json`.
@@ -33,12 +33,10 @@ They expect Qt in `C:\qt-static`.
 
 ## Versions
 
-`project(toffee VERSION x.y.z)` in `CMakeLists.txt` is the one version number. It is compiled into
-both executables (`toffee-cli version`, the Settings page, the start-up log line and the Windows
-file properties). Builds that are not releases show `x.y.z-dev`.
+The release tag is the version. Builds that are not releases show the newest `v*` tag with `-dev` (`0.1.0-dev`).
 
-To release: bump `project(VERSION)`, commit, then push a tag `vx.y.z` (or `vx.y.z-rc1` for a
-prerelease). CI stamps the tag into the build and stops if it does not match the project version.
+To release: commit, then push a tag `vx.y.z` (or `vx.y.z-rc1` for a prerelease). CI builds that
+version from the tag.
 
 ## Where the pieces come from
 

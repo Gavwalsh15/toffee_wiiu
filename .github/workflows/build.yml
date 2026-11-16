@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: Version tag to publish, e.g v0.1.0. It must match project(VERSION) in CMakeLists.txt.
+        description: Version tag to publish, e.g v0.1.0.
         required: false
         type: string
       prerelease:

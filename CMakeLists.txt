@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
-project(toffee VERSION 0.1.0 LANGUAGES CXX)
+include(cmake/ProjectVersion.cmake)
+project(toffee VERSION ${TOFFEE_PROJECT_VERSION} LANGUAGES CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(VERBOSE_LOGGING "Include startup/runtime logging" OFF)

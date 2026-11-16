@@ -79,7 +79,8 @@ class StreamController : public QObject {
     QString pairingCode() const { return stream::pairingSymbols(link_.feedback().pairingCode); }
     int pairingCodeValue() const { return link_.feedback().pairingCode; }
     QString error() const { return error_; }
-    QString metrics() const;
+    QString metrics() const; 
+    QString summary() const;
     QString portName() const { return link_.portName(); }
     QString logPath() const { return log_.fileName(); }
     bool paused() const { return capture_.paused(); }
@@ -128,6 +129,7 @@ class StreamController : public QObject {
     void previewChanged();
     void captureChanged();
     void deviceDisconnected();
+    void bridgeIncompatible();
 
   private:
     void tick();
@@ -138,6 +140,8 @@ class StreamController : public QObject {
     void closeTransport();
     void updateIdleStatus();
     void prepareFrame(qint64 now);
+    QString metricsLine(quint64 frames, quint64 bytes, qint64 us, double ackMs,
+                        double encodeMs) const;
     void fail(const QString& message);
     void startAudio();
     void audioChunk(const QByteArray& pcm);

@@ -43,8 +43,8 @@ int main()
             const std::string value(qp);
             size_t used = 0;
             pQp = std::stoi(value, &used);
-            if (used != value.size() || pQp < 10 || pQp > 40)
-                throw std::runtime_error("Encoder QP must be 10..40");
+            if (used != value.size() || pQp < 8 || pQp > 40) // Move to ToffeeEncoder::MAX_PICTURE_QP
+                throw std::runtime_error("Encoder QP must be 8..40");
         }
         const int idrQp = std::max(36, pQp + 4);
         ToffeeEncoder encoder(preset, std::exp2((pQp - idrQp) / 6.0f), pQp);

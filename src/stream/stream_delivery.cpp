@@ -38,6 +38,7 @@ void StreamController::bridgeUpdated(bool wasReady)
                                  .arg(ackUs)
                                  .toUtf8());
         stats_.maxAckMs = std::max(stats_.maxAckMs, ackUs / 1000.0);
+        stats_.current.maxAckMs = std::max(stats_.current.maxAckMs, ackUs / 1000.0);
         if (const auto* sample = done.sample)
             note(QString("HOST_DELIVERY:seq=%1 bytes=%2 idr=%3 encoder_pipe_us=%4 queue_us=%5 "
                          "native_write_us=%6 ack_after_native_us=%7 ack_total_us=%8")
@@ -78,6 +79,7 @@ void StreamController::encoderOutput(const QByteArray& record, bool idr, quint64
     }
     const auto now = elapsedUs();
     stats_.maxEncodeMs = std::max(stats_.maxEncodeMs, (now - encodeAt_) / 1000.0);
+    stats_.current.maxEncodeMs = std::max(stats_.current.maxEncodeMs, (now - encodeAt_) / 1000.0);
     if (pacingTrace_.enabled())
         pacingTrace_.add(QString("event=encoded at_us=%1 seq=%2 pipe_us=%3 bytes=%4 idr=%5")
                              .arg(pacing::nowUs())
@@ -88,6 +90,7 @@ void StreamController::encoderOutput(const QByteArray& record, bool idr, quint64
                              .toUtf8());
     stats_.maxEncoderPipeMs = std::max(stats_.maxEncoderPipeMs, (now - encoderWriteAt_) / 1000.0);
     stats_.encoderPipeUs += now - encoderWriteAt_;
+
     pictureSize_.encoded(idr && !submittedIdr_ ? toffee::video::MAX_RECORD_BYTES : record.size(),
                          idr && submittedIdr_);
     const auto bytes = stream::packet(VIDEO_FRAME, sequence_, record);
@@ -103,6 +106,8 @@ void StreamController::encoderOutput(const QByteArray& record, bool idr, quint64
     ++sequence_;
     ++stats_.totalFrames;
     stats_.bytes += bytes.size();
+    ++stats_.current.frames;
+    stats_.current.bytes += bytes.size();
     stats_.idrs += idr;
     lastWrite_ = now;
 }
@@ -210,6 +215,9 @@ void StreamController::tick()
     if (now - lastNotify_ > StatsPeriodUs)
     {
         lastNotify_ = now;
+        stats_.current.endUs = now;
+        stats_.lastSecond = std::exchange(stats_.current, {});
+        stats_.current.startUs = now;
         note(metrics());
         note(QString("HOST_STAGE_STATS:source_max_ms=%1 convert_max_ms=%2 encoder_pipe_max_ms=%3 "
                      "source_avg_ms=%4 convert_avg_ms=%5 encoder_pipe_avg_ms=%6")

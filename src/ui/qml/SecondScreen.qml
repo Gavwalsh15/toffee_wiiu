@@ -14,8 +14,20 @@ Item {
     // Turning the mode off and on again clears it.
     property bool held: false
     function hold() { if (on) held = true }
+    property bool needsFlash: false
+    Connections {
+        target: mode.stream
+        function onBridgeIncompatible() { mode.needsFlash = true }
+        // A bridge connected by hand that turns out compatible clears it too.
+        function onChanged() { if (mode.stream.ready) mode.needsFlash = false }
+    }
+    Connections {
+        target: mode.flasher
+        function onFinished(success) { if (success) mode.needsFlash = false }
+    }
     onOnChanged: {
         held = false
+        needsFlash = false
         if (!on && stream.streaming)
             stream.stopStream()
     }
@@ -35,6 +47,8 @@ Item {
             return "Install the monitor driver in Settings first."
         if (monitor.problem && monitor.status)
             return monitor.status
+        if (needsFlash)
+            return "The bridge needs this version's firmware. Flash it from the Flash ESP page."
         if (held)
             return "Paused. Press Start stream, or turn second screen off and on, to carry on."
         if (!stream.connected)
@@ -54,7 +68,7 @@ Item {
 
     Timer {
         interval: 1000; repeat: true
-        running: mode.on && !mode.held
+        running: mode.on && !mode.held && !mode.needsFlash
         onTriggered: {
             const s = mode.stream
             if (mode.flasher.flashing || mode.workspace.currentPage === 0 || s.busy && !s.streaming)

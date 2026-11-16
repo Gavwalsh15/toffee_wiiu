@@ -10,12 +10,19 @@
 #include <utility>
 
 namespace stream {
-inline constexpr int VideoQp = 10;
+inline constexpr int VideoQp = 8;
 inline constexpr const char* VideoPreset = "fast";
+
+struct StatsWindow {
+    quint64 frames = 0, bytes = 0;
+    double maxAckMs = 0, maxEncodeMs = 0;
+    qint64 startUs = 0, endUs = 0;
+};
 
 struct StreamStats {
     quint64 totalFrames = 0, bytes = 0, idrs = 0;
     double maxAckMs = 0, maxEncodeMs = 0;
+    StatsWindow current, lastSecond;
     double maxSourceMs = 0, maxConvertMs = 0, maxEncoderPipeMs = 0;
     quint64 sourceJobs = 0, sourceUs = 0, convertUs = 0, encoderPipeUs = 0;
     quint64 freshCaptures = 0, reusedCaptures = 0;
@@ -108,27 +115,34 @@ class SessionLifecycle {
 
 class PictureSizeControl {
   public:
-    static constexpr qsizetype TargetBytes = 10 * 1024;
-    static constexpr qsizetype LimitBytes = 20 * 1024;
+    static constexpr qsizetype FrameBytes = 11 * 1024; 
+    static constexpr qsizetype SavedBytes = 8 * 1024;
     static constexpr int CalmPictures = 4;
 
     void begin(int sharpestQp)
     {
         sharpest_ = qp_ = sharpestQp;
         calm_ = 0;
+        credit_ = SavedBytes;
     }
     int qp() const { return qp_; }
     void encoded(qsizetype bytes, bool idr)
     {
-        // IDR pictures have their own quantizer, so their size says little about the next P.
-        if (idr || bytes <= 0)
+        if (bytes <= 0)
             return;
-        if (bytes > LimitBytes)
+        credit_ = std::min(SavedBytes, credit_ + FrameBytes - bytes);
+        // IDR pictures have their own quantizer, so their size says little about the next P.
+        if (idr)
+        {
+            credit_ = std::max<qsizetype>(credit_, 0);
+            return;
+        }
+        if (credit_ < 0)
+        {
             // Size roughly halves for every 6 QP.
-            raise(int(std::ceil(6 * std::log2(double(bytes) / TargetBytes))));
-        else if (bytes > TargetBytes)
-            raise(1);
-        else if (bytes < TargetBytes / 2 && ++calm_ >= CalmPictures)
+            raise(int(std::ceil(6 * std::log2(1.0 + double(-credit_) / FrameBytes))));
+            credit_ = 0;
+        } else if (credit_ == SavedBytes && ++calm_ >= CalmPictures)
         {
             calm_ = 0;
             qp_ = std::max(sharpest_, qp_ - 1);
@@ -141,6 +155,7 @@ class PictureSizeControl {
         calm_ = 0;
         qp_ = std::min(toffee::video::MAX_PICTURE_QP, qp_ + std::max(1, steps));
     }
+    qsizetype credit_ = SavedBytes;
     int sharpest_ = 32, qp_ = 32, calm_ = 0;
 };
 

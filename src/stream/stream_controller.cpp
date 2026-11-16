@@ -57,6 +57,7 @@ StreamController::StreamController(QObject* parent) : QObject(parent), link_(clo
         error_ = message;
         note(error_);
         disconnectDevice();
+        emit bridgeIncompatible();
     });
     connect(&link_, &stream::BridgeLink::errorReported, this,
             [this](const QString& message) { fail("ESP: " + message); });
@@ -129,17 +130,31 @@ void StreamController::note(const QString& line)
 }
 QString StreamController::metrics() const
 {
+    const auto& second = stats_.lastSecond;
+    if (!session_.active() || !second.endUs)
+        return summary();
+    return metricsLine(second.frames, second.bytes, second.endUs - second.startUs,
+                       second.maxAckMs, second.maxEncodeMs);
+}
+QString StreamController::summary() const
+{
+    const auto end = session_.active() ? elapsedUs() : stoppedAt_;
+    return metricsLine(stats_.totalFrames, stats_.bytes, end - startedAt_, stats_.maxAckMs,
+                       stats_.maxEncodeMs);
+}
+QString StreamController::metricsLine(quint64 frames, quint64 bytes, qint64 us, double ackMs,
+                                      double encodeMs) const
+{
     if (!stats_.totalFrames)
         return "No frames sent";
-    const auto end = session_.active() ? elapsedUs() : stoppedAt_;
-    const double seconds = std::max(0.001, (end - startedAt_) / 1000000.0);
+    const double seconds = std::max(0.001, us / 1000000.0);
     return QString("%1 fps · %2 Mbit/s · %3 frames · ACK max %4 ms · encode max %5 ms · %6 "
                    "recovery requests · QP %7")
-        .arg(stats_.totalFrames / seconds, 0, 'f', 1)
-        .arg(stats_.bytes * 8 / seconds / 1000000, 0, 'f', 2)
+        .arg(frames / seconds, 0, 'f', 1)
+        .arg(bytes * 8 / seconds / 1000000, 0, 'f', 2)
         .arg(stats_.totalFrames)
-        .arg(stats_.maxAckMs, 0, 'f', 1)
-        .arg(stats_.maxEncodeMs, 0, 'f', 1)
+        .arg(ackMs, 0, 'f', 1)
+        .arg(encodeMs, 0, 'f', 1)
         .arg(link_.feedback().requests)
         .arg(pictureSize_.qp());
 }

@@ -42,6 +42,7 @@ static QueueHandle_t free_slots, ready_records;
 /* Large pictures share the session's 64 KiB buffer back to back, so up to USB_RECORD_SLOTS can be
  * resident at once; a worst-case IDR still fits alone. ring_space is given whenever one is freed. */
 static picture_ring_t ring;
+static_assert(USB_RECORD_SLOTS <= PICTURE_RING_ITEMS, "every slot may hold a large picture");
 static SemaphoreHandle_t ring_space;
 static SemaphoreHandle_t buffer_mutex;
 static uint32_t large_allocations, allocation_failures;

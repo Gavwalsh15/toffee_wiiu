@@ -4,7 +4,7 @@
 #include <memory>
 
 namespace usb {
-inline constexpr int PacketBytes = 64;
+inline constexpr int PacketBytes = 60; // Best number some how
 inline constexpr int WorkerBlockBytes = 8192;
 } // namespace usb
 

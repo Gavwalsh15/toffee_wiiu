@@ -87,7 +87,7 @@ void StreamController::startStream()
                              .arg(toffee::video::FRAME_PERIOD_US)
                              .toUtf8());
     link_.feedback().requests = 0;
-    startedAt_ = elapsedUs();
+    startedAt_ = lastNotify_ = stats_.current.startUs = elapsedUs();
     status_ = "Starting encoder";
     note(status_);
     pictureSize_.begin(stream::VideoQp);
@@ -186,7 +186,7 @@ void StreamController::halt(bool sendEnd)
     delivery_.clear();
     link_.feedback().profile = -1;
     if (wasWanted)
-        note("Stopped: " + metrics() + QString(" · IDRs %1").arg(stats_.idrs));
+        note("Stopped: " + summary() + QString(" · IDRs %1").arg(stats_.idrs));
     status_ = "Stopping stream";
     emit changed();
     finishStop();

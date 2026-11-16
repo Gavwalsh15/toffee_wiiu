@@ -8,6 +8,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QSurfaceFormat>
 #include "display/driver_installer.h"
 #include <windows.h>
 #include <shellapi.h>
@@ -24,6 +25,9 @@ int run(int argc, char** argv)
         if (install)
             return result;
     }
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setSwapInterval(0);
+    QSurfaceFormat::setDefaultFormat(format);
     QGuiApplication application(argc, argv);
     QGuiApplication::setApplicationName(config::APP_NAME);
     QGuiApplication::setApplicationVersion(config::APP_VERSION);

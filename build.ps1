@@ -9,7 +9,7 @@ param(
     [switch] $QmlLint,
     # Run the host tests (tests/) after the build.
     [switch] $Test,
-    # A release version such as 1.2.3 or 1.2.3-rc1; it must match project(VERSION) in CMakeLists.txt.
+    # A release version such as v1.2.3 or v1.2.3-rc1 (default: the newest v* tag plus -dev).
     [string] $Version = ''
 )
 

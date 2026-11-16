@@ -38,6 +38,31 @@ int runWithDiagnostics(QGuiApplication& application, QQmlApplicationEngine& engi
         page->setProperty("hasSource", true);
         if (arguments.contains("--capture-display"))
             session->setSceneMode(video::Scene::DisplayCapture);
+        if (arguments.contains("--capture-window"))
+            session->setSceneMode(video::Scene::WindowCapture);
+        
+        const auto targets = session->captureTargets();
+        for (const auto& target : targets)
+            QTextStream(stdout) << "CAPTURE TARGET " << target.toMap().value("label").toString()
+                                << Qt::endl;
+        const int targetArgument = arguments.indexOf("--capture-target");
+        if (targetArgument >= 0 && targetArgument + 1 < arguments.size())
+        {
+            const auto wanted = arguments.at(targetArgument + 1);
+            int found = -1;
+            for (int i = 0; i < targets.size() && found < 0; ++i)
+                if (targets[i].toMap().value("label").toString().contains(wanted,
+                                                                          Qt::CaseInsensitive))
+                    found = i;
+            if (found < 0)
+            {
+                QTextStream(stdout) << "CAPTURE TARGET NOT FOUND " << wanted << Qt::endl;
+                return 4;
+            }
+            session->setCaptureTarget(found);
+            QTextStream(stdout) << "CAPTURING " << targets[found].toMap().value("label").toString()
+                                << Qt::endl;
+        }
         session->connectDevice(arguments.at(streamCheck + 1));
         if (arguments.contains("--reset"))
             QTimer::singleShot(300, session, &StreamController::restartDevice);
@@ -92,7 +117,7 @@ int runWithDiagnostics(QGuiApplication& application, QQmlApplicationEngine& engi
                         });
                 }
                 QTimer::singleShot(checkSeconds * 1000, &application, [&, session] {
-                    QTextStream(stdout) << "FINAL " << session->metrics() << "\nLOG "
+                    QTextStream(stdout) << "FINAL " << session->summary() << "\nLOG "
                                         << session->logPath() << Qt::endl;
                     const bool running = session->streaming();
                     if (running && arguments.contains("--lifecycle-check") && ++checkCycles < 3)

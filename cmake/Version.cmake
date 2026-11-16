@@ -1,16 +1,3 @@
-set(TOFFEE_VERSION "" CACHE STRING "Release version such as 1.2.3 or 1.2.3-rc1 (default: <project version>-dev)")
-
-if(TOFFEE_VERSION)
-    string(REGEX REPLACE "^v" "" TOFFEE_VERSION_STRING "${TOFFEE_VERSION}")
-    string(REPLACE "." "\\." _version_pattern "${PROJECT_VERSION}")
-    if(NOT TOFFEE_VERSION_STRING MATCHES "^${_version_pattern}([-+][0-9A-Za-z.+-]+)?$")
-        message(FATAL_ERROR
-            "TOFFEE_VERSION ${TOFFEE_VERSION} does not match project(VERSION ${PROJECT_VERSION}) in "
-            "CMakeLists.txt. Bump the project version before tagging the release.")
-    endif()
-else()
-    set(TOFFEE_VERSION_STRING "${PROJECT_VERSION}-dev")
-endif()
 message(STATUS "Toffee version ${TOFFEE_VERSION_STRING}")
 
 set(TOFFEE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
